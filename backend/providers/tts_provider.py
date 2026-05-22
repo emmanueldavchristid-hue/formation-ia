@@ -1,64 +1,51 @@
-"""
-Couche d'abstraction TTS (Text-to-Speech).
-Gratuit maintenant  → gTTS (Google, nécessite internet) ou pyttsx3 (offline)
-Premium plus tard   → ElevenLabs, OpenAI TTS
-Changer TTS_PROVIDER dans .env suffit.
-"""
-import tempfile, os
+import tempfile, os, subprocess
 from config import settings
 
-
-def _synthesize_gtts(text: str) -> bytes:
-    from gtts import gTTS
-    tts = gTTS(text=text, lang=settings.TTS_LANGUAGE, slow=False)
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        tts.save(f.name)
-        tmp = f.name
+def synthesize(text: str) -> bytes:
+    provider = getattr(settings, "TTS_PROVIDER", "gtts")
+    if provider == "openai_tts":
+        return _openai_tts(text)
     try:
-        with open(tmp, "rb") as f:
-            return f.read()
-    finally:
-        os.unlink(tmp)
+        return _gtts(text)
+    except Exception:
+        return _espeak(text)
 
-
-def _synthesize_pyttsx3(text: str) -> bytes:
-    """100% offline, voix robotique mais sans internet."""
-    import pyttsx3, wave, io
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 160)
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        tmp = f.name
-    engine.save_to_file(text, tmp)
-    engine.runAndWait()
-    with open(tmp, "rb") as f:
-        data = f.read()
-    os.unlink(tmp)
-    return data
-
-
-def _synthesize_openai(text: str) -> bytes:
+def _openai_tts(text: str) -> bytes:
     from openai import OpenAI
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     response = client.audio.speech.create(
-        model="tts-1", voice="nova", input=text
+        model="tts-1-hd",
+        voice="nova",
+        input=text[:4096],
+        response_format="mp3"
     )
     return response.content
 
+def _gtts(text: str) -> bytes:
+    from gtts import gTTS
+    tts = gTTS(text=text[:500], lang="fr", slow=False)
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        tts.save(f.name); tmp = f.name
+    try:
+        with open(tmp, "rb") as f: return f.read()
+    finally:
+        os.unlink(tmp)
 
-def _synthesize_elevenlabs(text: str) -> bytes:
-    from elevenlabs.client import ElevenLabs
-    client = ElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
-    audio = client.generate(text=text, voice="Rachel", model="eleven_multilingual_v2")
-    return b"".join(audio)
-
-
-def synthesize(text: str) -> bytes:
-    """Point d'entrée unique → retourne des bytes audio (MP3 ou WAV)."""
-    provider = settings.TTS_PROVIDER
-    if provider == "openai_tts":
-        return _synthesize_openai(text)
-    if provider == "elevenlabs":
-        return _synthesize_elevenlabs(text)
-    if provider == "pyttsx3":
-        return _synthesize_pyttsx3(text)
-    return _synthesize_gtts(text)
+def _espeak(text: str) -> bytes:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp_wav = f.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        tmp_mp3 = f.name
+    try:
+        subprocess.run(
+            ["espeak-ng", "-v", "fr", "-s", "145", "-w", tmp_wav, text[:400]],
+            capture_output=True, timeout=30, check=True
+        )
+        subprocess.run(
+            ["ffmpeg", "-i", tmp_wav, tmp_mp3, "-y", "-loglevel", "error"],
+            capture_output=True, timeout=30, check=True
+        )
+        with open(tmp_mp3, "rb") as f: return f.read()
+    finally:
+        for p in [tmp_wav, tmp_mp3]:
+            if os.path.exists(p): os.unlink(p)

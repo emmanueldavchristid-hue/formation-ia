@@ -21,11 +21,11 @@ export default function QuizPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`http://localhost:8000/api/course/${id}`)
+    fetch(`http://172.31.6.180:8000/api/course/${id}`)
       .then(r => r.json())
       .then(course => {
         setTopic(course.topic || course.title || "ce cours");
-        return fetch("http://localhost:8000/api/quiz/generate", {
+        return fetch("http://172.31.6.180:8000/api/quiz/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -53,6 +53,32 @@ export default function QuizPage() {
   const score = answers.filter(Boolean).length;
   const percent = questions.length > 0 ? Math.round((score / questions.length) * 100) : 0;
   const passed = percent >= 80;
+  // Envoyer le score au backend
+  if (typeof window !== "undefined") {
+    const username = localStorage.getItem("username") || "";
+    if (username) {
+      fetch(`http://${window.location.hostname}:8000/api/progress/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          course_id: id,
+          slide_index: questions.length,
+          total_slides: questions.length,
+          completed: passed,
+          quiz_score: percent
+        })
+      }).catch(() => {});
+    }
+  }
+  // Marquer le cours comme termine si reussi
+  if (passed && typeof window !== "undefined") {
+    const done = JSON.parse(localStorage.getItem("completed_courses") || "[]");
+    if (!done.includes(id)) {
+      done.push(id);
+      localStorage.setItem("completed_courses", JSON.stringify(done));
+    }
+  }
 
   function selectAnswer(opt: string) {
     if (selected !== null) return;
@@ -84,7 +110,7 @@ export default function QuizPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="text-center">
         <p className="text-red-400 text-xl mb-6">{error}</p>
-        <button onClick={() => router.push(`/cours/${id}`)}
+        <button onClick={() => router.push(localStorage.getItem("role") === "admin" ? "/admin" : "/apprenant")}
           className="bg-blue-600 text-white px-8 py-3 rounded-2xl">
           Retour au cours
         </button>
@@ -131,13 +157,13 @@ export default function QuizPage() {
           </div>
 
           {passed ? (
-            <button onClick={() => router.push("/cours")}
+            <button onClick={() => router.push(localStorage.getItem("role") === "admin" ? "/admin" : "/apprenant")}
               className="w-full py-4 bg-green-600 text-white rounded-2xl font-bold hover:bg-green-700">
               Voir mes formations
             </button>
           ) : (
             <div className="flex gap-3">
-              <button onClick={() => router.push(`/cours/${id}`)}
+              <button onClick={() => router.push(localStorage.getItem("role") === "admin" ? "/admin" : "/apprenant")}
                 className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700">
                 Revoir le cours
               </button>
@@ -165,7 +191,7 @@ export default function QuizPage() {
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-        <button onClick={() => router.push(`/cours/${id}`)}
+        <button onClick={() => router.push(localStorage.getItem("role") === "admin" ? "/admin" : "/apprenant")}
           className="text-gray-400 hover:text-white text-sm">
           ← Cours
         </button>

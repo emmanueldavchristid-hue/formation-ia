@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from routers import ingest, chat, voice, course, quiz
+from routers import ingest, chat, voice, course, quiz, auth, users, voice_ws, progress
 
 app = FastAPI(
     title="🎓 IA Formation Bancaire",
@@ -29,6 +29,10 @@ app.include_router(chat.router)
 app.include_router(voice.router)
 app.include_router(course.router)
 app.include_router(quiz.router)
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(voice_ws.router)
+app.include_router(progress.router)
 
 @app.get("/", tags=["🔍 Health"])
 def root():

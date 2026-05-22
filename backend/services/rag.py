@@ -60,19 +60,101 @@ def _extract_audio(path: str) -> str:
     return " ".join(s.text for s in segments).strip()
 
 def _extract_video(path: str) -> str:
-    import subprocess, tempfile
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        tmp = f.name
+    """
+    Extrait et transcrit une longue video (1h-3h).
+    Strategie : decoupage en segments de 10 min pour eviter les crashes memoire.
+    """
+    import subprocess, tempfile, os
+    from pathlib import Path
+    from faster_whisper import WhisperModel
+    from config import settings
+
+    print(f"  Video : {Path(path).name}")
+
+    # 1. Obtenir la duree totale
+    result = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", path],
+        capture_output=True, text=True
+    )
     try:
+        total_duration = float(result.stdout.strip())
+    except Exception:
+        total_duration = 0
+    print(f"  Duree : {total_duration/60:.1f} minutes")
+
+    # 2. Decouper en segments de 10 minutes
+    segment_duration = 600  # 10 min en secondes
+    segments = []
+    start = 0
+    seg_idx = 0
+
+    while start < total_duration or seg_idx == 0:
+        tmp = tempfile.NamedTemporaryFile(suffix=f"_seg{seg_idx}.wav", delete=False)
+        tmp.close()
+        cmd = [
+            "ffmpeg", "-i", path,
+            "-ss", str(start),
+            "-t", str(segment_duration),
+            "-vn", "-acodec", "pcm_s16le",
+            "-ar", "16000", "-ac", "1",
+            tmp.name, "-y", "-loglevel", "error"
+        ]
+        r = subprocess.run(cmd, capture_output=True, timeout=120)
+        if r.returncode == 0 and os.path.getsize(tmp.name) > 1000:
+            segments.append(tmp.name)
+        else:
+            os.unlink(tmp.name)
+        start += segment_duration
+        seg_idx += 1
+        if start >= total_duration:
+            break
+
+    if not segments:
+        # Fallback : extraire tout l audio d un coup
+        tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp.close()
         subprocess.run(
             ["ffmpeg", "-i", path, "-vn", "-acodec", "pcm_s16le",
-             "-ar", "16000", "-ac", "1", tmp, "-y"],
+             "-ar", "16000", "-ac", "1", tmp.name, "-y", "-loglevel", "error"],
             capture_output=True, timeout=300
         )
-        return _extract_audio(tmp)
-    finally:
-        if os.path.exists(tmp): os.unlink(tmp)
+        segments = [tmp.name]
 
+    print(f"  {len(segments)} segments a transcrire...")
+
+    # 3. Transcrire chaque segment
+    model = WhisperModel(
+        settings.WHISPER_MODEL_SIZE,
+        device="cpu",
+        compute_type="int8"
+    )
+    full_text = []
+    for i, seg_path in enumerate(segments):
+        print(f"  Segment {i+1}/{len(segments)}...")
+        try:
+            segs, info = model.transcribe(
+                seg_path,
+                language=settings.WHISPER_LANGUAGE,
+                beam_size=3,
+                vad_filter=True,       # Ignore les silences
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
+            text = " ".join(s.text for s in segs).strip()
+            if text:
+                full_text.append(text)
+            print(f"    OK : {len(text)} chars")
+        except Exception as e:
+            print(f"    Erreur segment {i+1}: {e}")
+        finally:
+            try:
+                os.unlink(seg_path)
+            except Exception:
+                pass
+
+    result = " ".join(full_text)
+    print(f"  Transcription totale : {len(result)} caracteres")
+    return result
 
 def _extract_image(path: str) -> str:
     """OCR sur image (PNG, JPG, etc.)"""

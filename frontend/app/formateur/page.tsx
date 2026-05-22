@@ -34,7 +34,7 @@ export default function FormateurPage() {
       form.append("file", file);
       form.append("course_id", courseId);
       try {
-        const res = await fetch("http://localhost:8000/api/ingest", { method: "POST", body: form });
+        const res = await fetch("http://172.31.6.180:8000/api/ingest", { method: "POST", body: form });
         const data = await res.json();
         if (data.status === "ok") {
           uploaded.push(file.name);
@@ -58,7 +58,7 @@ export default function FormateurPage() {
     // 2. Generer le cours
     addLog("Generation du cours en cours (patience ~10 min sur CPU)...");
     try {
-      const res = await fetch("http://localhost:8000/api/course/generate", {
+      const res = await fetch("http://172.31.6.180:8000/api/course/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
