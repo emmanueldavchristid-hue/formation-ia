@@ -17,7 +17,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://172.31.6.180:8000/api/auth/login", {
+      const res = await fetch("http://localhost:8000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password: password.trim() })

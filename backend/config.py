@@ -8,7 +8,8 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "ollama"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "mistral"
-    OPENAI_API_KEY: str = ""          # vide pour l'instant
+    OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""          # vide pour l'instant
 
     # STT
     STT_PROVIDER: str = "faster_whisper"

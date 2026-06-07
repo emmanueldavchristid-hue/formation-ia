@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import AvatarProfesseur, { AvatarState } from "../../components/AvatarProfesseur";
 import { useParams, useRouter } from "next/navigation";
 import { useVoiceStream, VoiceStatus } from "../../hooks/useVoiceStream";
 
@@ -46,6 +47,8 @@ export default function CoursePlayer() {
   const [showNarration, setShowNarration] = useState(false);
   const [waitingFollowup, setWaitingFollowup] = useState(false);
   const [introPlayed, setIntroPlayed] = useState(false);
+  const [avatarState, setAvatarState] = useState<AvatarState>("idle");
+  const [avatarMinimized, setAvatarMinimized] = useState(false);
   const courseAudioRef = useRef<HTMLAudioElement>(null);
 
   // Envoyer la progression au backend
@@ -68,6 +71,8 @@ export default function CoursePlayer() {
   const answerAudioRef = useRef<HTMLAudioElement>(null);
   const resumePositionRef = useRef<number>(0);
 
+
+
   const { status: voiceStatus, isRecording, connect, toggleRecording: _toggleRecording } = useVoiceStream({
     courseId: id as string,
     onTranscript: (text) => {
@@ -87,20 +92,45 @@ export default function CoursePlayer() {
       setTranscript("");
       setAiAnswer("");
       setWaitingFollowup(false);
-      // Reprendre le cours a la position exacte ou il etait
       setTimeout(() => {
-        if (courseAudioRef.current) {
-          if (resumePositionRef.current > 0) {
-            courseAudioRef.current.currentTime = resumePositionRef.current;
+        if (!courseAudioRef.current) return;
+        const audio = courseAudioRef.current;
+        const position = resumePositionRef.current;
+        // Recharger le src de la slide courante si l audio a ete remplace
+        const currentSlide = course?.slides[idx];
+        if (currentSlide) {
+          const expectedSrc = `http://172.31.6.180:8000${currentSlide.audio_url}`;
+          const currentSrc = audio.src;
+          // Si le src a change (reponse IA jouee), recharger la slide
+          if (!currentSrc.includes(currentSlide.audio_url.split("/").pop() || "")) {
+            audio.src = expectedSrc;
+            audio.load();
+          }
+          if (position > 0) {
+            audio.currentTime = position;
             resumePositionRef.current = 0;
           }
-          courseAudioRef.current.play()
-            .then(() => setPlaying(true))
-            .catch(() => {});
         }
-      }, 500);
+        audio.play()
+          .then(() => setPlaying(true))
+          .catch((e) => {
+            console.log("Resume failed, retry:", e);
+            // Retry apres 500ms
+            setTimeout(() => {
+              audio.play().then(() => setPlaying(true)).catch(() => {});
+            }, 500);
+          });
+      }, 600);
     },
   });
+
+  useEffect(() => {
+    if (isRecording) setAvatarState("listening");
+    else if (voiceStatus === "processing") setAvatarState("thinking");
+    else if (voiceStatus === "speaking") setAvatarState("talking");
+    else if (playing) setAvatarState("talking");
+    else setAvatarState("idle");
+  }, [isRecording, voiceStatus, playing]);
 
   useEffect(() => {
     fetch(`http://172.31.6.180:8000/api/course/${id}`)
@@ -372,6 +402,12 @@ export default function CoursePlayer() {
           )}
         </div>
       </div>
+
+      <AvatarProfesseur
+        state={avatarState}
+        minimized={avatarMinimized}
+        onToggle={() => setAvatarMinimized(v => !v)}
+      />
 
       <audio ref={courseAudioRef} preload="none"/>
       <audio ref={answerAudioRef}/>

@@ -1,0 +1,11 @@
+{
+  "admin:cours_test_openai": {
+    "username": "admin",
+    "course_id": "cours_test_openai",
+    "slide_index": 2,
+    "total_slides": 8,
+    "completed": false,
+    "quiz_score": -1,
+    "last_seen": "2026-06-01T15:58:51.473388"
+  }
+}
